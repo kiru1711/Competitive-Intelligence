@@ -1,154 +1,114 @@
-import { useState, useEffect } from 'react';
-import { Search, ChevronDown, ChevronUp } from 'lucide-react';
-import { supabase, Article } from '../lib/supabase';
+// src/pages/HomePage.tsx
 
-export default function HomePage() {
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [filteredArticles, setFilteredArticles] = useState<Article[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [expandedArticle, setExpandedArticle] = useState<string | null>(null);
-  const [articlesToSummarize, setArticlesToSummarize] = useState<number>(5);
+import React, { useState } from 'react';
+import { Article } from '../types'; // Using the shared types file
 
-  useEffect(() => {
-    fetchArticles();
-  }, []);
+// This interface defines the "contract" for the props App.tsx will send
+interface HomePageProps {
+  totalFound: number;
+  numToSummarize: number;
+  setNumToSummarize: (num: number) => void;
+  handleSummarizeRequest: (e: React.FormEvent) => void;
+  summarizedArticles: Article[];
+  isLoading: boolean;
+  error: string | null;
+}
 
-  useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredArticles(articles);
-    } else {
-      const query = searchQuery.toLowerCase();
-      const filtered = articles.filter(
-        (article) =>
-          article.title.toLowerCase().includes(query) ||
-          article.summary.toLowerCase().includes(query) ||
-          article.source.toLowerCase().includes(query)
-      );
-      setFilteredArticles(filtered);
-    }
-  }, [searchQuery, articles]);
+// --- Components ---
+// src/pages/HomePage.tsx
 
-  const fetchArticles = async () => {
-    const { data, error } = await supabase
-      .from('articles')
-      .select('*')
-      .order('created_at', { ascending: false });
+const ArticleCard: React.FC<{ article: Article }> = ({ article }) => {
+    // This helper maps the impact level to the correct Tailwind CSS border color class
+    const borderColorClass = {
+        High: 'border-red-500',
+        Medium: 'border-yellow-500',
+        Low: 'border-green-500',
+    }[article.impact] || 'border-gray-700'; // A fallback default color
 
-    if (error) {
-      console.error('Error fetching articles:', error);
-    } else if (data) {
-      setArticles(data);
-      setFilteredArticles(data);
-    }
-  };
-
-  const getImpactColor = (level: string) => {
-    switch (level) {
-      case 'high':
-        return 'bg-red-500';
-      case 'medium':
-        return 'bg-yellow-500';
-      case 'low':
-        return 'bg-green-500';
-      default:
-        return 'bg-gray-500';
-    }
-  };
-
-  const toggleArticle = (id: string) => {
-    setExpandedArticle(expandedArticle === id ? null : id);
-  };
-
-  return (
-    <div className="p-8">
-      <div className="flex gap-6 mb-8">
-        <div className="flex-1 bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <div className="text-gray-400 text-sm mb-2">Total New Articles Found</div>
-          <div className="text-3xl font-bold text-white">{articles.length}</div>
+    return (
+        // We construct the className dynamically. Note `border-2` to make it thicker.
+        <div className={`bg-gray-800 p-6 rounded-lg border-2 ${borderColorClass}`}>
+            <div className="flex justify-between items-start mb-2">
+                <h3 className="text-xl font-bold text-white pr-4">{article.title}</h3>
+                {article.impact && (
+                    <span className={`impact-tag ${article.impact.toLowerCase()}`}>
+                        {article.impact}
+                    </span>
+                )}
+            </div>
+            <p className="text-sm text-gray-400 mb-4">{article.source}</p>
+            <p className="text-gray-300 mb-4">{article.summary}</p>
+            <a href={article.link} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+                Read More
+            </a>
         </div>
+    );
+};
 
-        <div className="flex-1 bg-gray-800 rounded-lg p-6 border border-gray-700">
-          <label className="text-gray-400 text-sm mb-2 block">
-            Number of Articles to Summarize
-          </label>
-          <input
-            type="number"
-            value={articlesToSummarize}
-            onChange={(e) => setArticlesToSummarize(Number(e.target.value))}
-            className="w-full bg-gray-900 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-            min="1"
-          />
-        </div>
-      </div>
+// --- Main Page Component ---
+const HomePage: React.FC<HomePageProps> = ({
+    totalFound,
+    numToSummarize,
+    setNumToSummarize,
+    handleSummarizeRequest,
+    summarizedArticles,
+    isLoading,
+    error
+}) => {
+    const [filter, setFilter] = useState('all');
 
-      <div className="mb-8">
-        <div className="relative">
-          <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder="Search articles..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-gray-800 text-white pl-12 pr-4 py-3 rounded-lg border border-gray-700 focus:border-blue-500 focus:outline-none"
-          />
-        </div>
-      </div>
+    const filteredArticles = summarizedArticles.filter(article => {
+        if (filter === 'all') return true;
+        return article.impact?.toLowerCase() === filter;
+    });
 
-      <div className="space-y-4">
-        {filteredArticles.map((article) => (
-          <div
-            key={article.id}
-            className="bg-gray-800 rounded-lg p-6 border border-gray-700 hover:border-gray-600 transition-colors"
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
-                <h3 className="text-xl font-bold text-white mb-2">{article.title}</h3>
-                <div className="text-gray-400 text-sm">
-                  {article.source} • {article.posted_time}
+    return (
+        // Added Tailwind classes for padding and layout
+        <div className="p-8 text-white">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h4 className="text-gray-400 text-sm font-medium">Total New Articles Found</h4>
+                    <p className="text-5xl font-bold mt-2">{totalFound}</p>
                 </div>
-              </div>
-              <span
-                className={`${getImpactColor(
-                  article.impact_level
-                )} text-white text-xs px-3 py-1 rounded-full font-medium uppercase ml-4`}
-              >
-                {article.impact_level}
-              </span>
+                <div className="bg-gray-800 p-6 rounded-lg border border-gray-700">
+                    <h4 className="text-gray-400 text-sm font-medium">Number of Articles to Summarize</h4>
+                    <form onSubmit={handleSummarizeRequest} className="flex items-center mt-2">
+                        <input
+                            type="number"
+                            value={numToSummarize}
+                            onChange={(e) => setNumToSummarize(Number(e.target.value))}
+                            min="1"
+                            max={totalFound > 0 ? totalFound : 1}
+                            className="bg-gray-700 border border-gray-600 rounded-l-md p-2 w-full text-white"
+                        />
+                        <button type="submit" disabled={isLoading} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-r-md">
+                            {isLoading ? '...' : 'Summarize'}
+                        </button>
+                    </form>
+                </div>
             </div>
 
-            <p className="text-gray-300 mb-4 line-clamp-2">{article.summary}</p>
+            {error && <p className="text-red-400 mb-4">{error}</p>}
 
-            {expandedArticle === article.id && (
-              <div className="bg-gray-900 rounded p-4 mb-4 border border-gray-700">
-                <p className="text-gray-300 whitespace-pre-wrap">{article.full_content}</p>
-              </div>
-            )}
+            <div className="mb-8">
+                <h4 className="text-gray-400 text-sm font-medium mb-2">Filter by Impact</h4>
+                <div className="flex space-x-4">
+                    <button onClick={() => setFilter('all')} className="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">All</button>
+                    <button onClick={() => setFilter('low')} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg">Low</button>
+                    <button onClick={() => setFilter('medium')} className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg">Medium</button>
+                    <button onClick={() => setFilter('high')} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">High</button>
+                </div>
+            </div>
 
-            <button
-              onClick={() => toggleArticle(article.id)}
-              className="flex items-center gap-2 text-blue-500 hover:text-blue-400 transition-colors"
-            >
-              {expandedArticle === article.id ? (
-                <>
-                  <span>Show Less</span>
-                  <ChevronUp size={16} />
-                </>
-              ) : (
-                <>
-                  <span>Read More</span>
-                  <ChevronDown size={16} />
-                </>
-              )}
-            </button>
-          </div>
-        ))}
+            <div className="space-y-6">
+                <h2 className="text-2xl font-bold">Latest CompIntel Digest</h2>
+                {isLoading && summarizedArticles.length === 0 && <p>Loading...</p>}
+                {filteredArticles.map((article, index) => (
+                    <ArticleCard key={index} article={article} />
+                ))}
+            </div>
+        </div>
+    );
+};
 
-        {filteredArticles.length === 0 && (
-          <div className="text-center text-gray-400 py-12">
-            {searchQuery ? 'No articles found matching your search.' : 'No articles available.'}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+export default HomePage;

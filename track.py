@@ -1,3 +1,5 @@
+COMPANY_CONTEXT = "We are a startup building a new AI-powered developer journal called 'Dev Diary'."
+
 import feedparser
 import requests
 from datetime import datetime, timedelta
@@ -38,41 +40,59 @@ def get_recent_articles(urls):
     return recent_articles
 
 # Part 3: The function to summarize text with your local Ollama model
+import json # Make sure to add this import at the top of your file
+
 def summarize_with_ollama(text_to_summarize, model="gemma:2b"):
-    """Sends text to the local Ollama API for summarization."""
-    print(f"Summarizing article...")
+    """Sends text to Ollama to get a summary AND an impact analysis."""
+    print("Analyzing for summary and impact...")
+    
+    # This new, more advanced prompt asks for a JSON output
+    prompt = f"""
+    You are a strategic analyst for a company with the following context: '{COMPANY_CONTEXT}'.
+    Analyze the following article text and provide a response in JSON format.
+    The JSON object must have two keys:
+    1. "summary": A concise, two-sentence summary of the article.
+    2. "impact": Your assessment of the impact this news has on our company, rated as "Low", "Medium", or "High".
+
+    Do not include any conversational filler or introductory text. Output only the raw JSON object.
+    
+    Article text: "{text_to_summarize}"
+    """
+    
     try:
         url = "http://localhost:11434/api/generate"
-        payload = {
-            "model": model,
-            "prompt": f"Summarize the following article in two sentences, focusing on the key announcement or finding: {text_to_summarize}",
-            "stream": False
-        }
+        payload = { "model": model, "prompt": prompt, "stream": False, "format": "json" }
         response = requests.post(url, json=payload)
         response.raise_for_status()
-        summary = response.json().get('response', 'Could not generate a summary.')
-        return summary.strip()
-    except requests.exceptions.RequestException as e:
-        return f"Error connecting to Ollama. Is the 'ollama serve' command running in another terminal?"
+        
+        # Parse the JSON response string from Ollama into a Python dictionary
+        response_json = json.loads(response.json().get('response', '{}'))
+        
+        return {
+            'summary': response_json.get('summary', 'Could not generate summary.'),
+            'impact': response_json.get('impact', 'Low')
+        }
+
+    except Exception as e:
+        print(f"Error during Ollama processing: {e}")
+        return {'summary': 'Error in processing.', 'impact': 'Low'}
 
 # NEW HELPER FUNCTION to process one article from start to finish
 def process_article(article_data):
-    """Downloads, parses, and summarizes a single article."""
+    """Downloads, parses, and gets analysis for a single article."""
     try:
         article = Article(article_data['link'])
         article.download()
         article.parse()
         
-        # --- OPTIMIZATION ---
-        # We only summarize the first 2500 characters (approx. 400 words)
         text_for_summary = article.text[:2500]
-        summary = summarize_with_ollama(text_for_summary)
+        analysis = summarize_with_ollama(text_for_summary)
         
-        # Add the summary to the original dictionary and return it
-        article_data['summary'] = summary
+        # Add both the summary and the new impact level to the data
+        article_data['summary'] = analysis['summary']
+        article_data['impact'] = analysis['impact']
         return article_data
     except Exception as e:
-        # Return None if processing fails for any reason
         print(f"--> Failed to process article: {article_data['link']}. Error: {e}")
         return None
 

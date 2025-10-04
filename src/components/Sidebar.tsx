@@ -1,4 +1,4 @@
-import { Home, Filter, Tag, CheckSquare } from 'lucide-react';
+import { Home,  Tag, CheckSquare } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: string;
@@ -8,7 +8,6 @@ interface SidebarProps {
 export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const navItems = [
     { id: 'home', label: 'Home', icon: Home },
-    { id: 'categories', label: 'Categories & Filters', icon: Filter },
     { id: 'keywords', label: 'Manage Keywords', icon: Tag },
     { id: 'todos', label: 'To-Do List', icon: CheckSquare },
   ];

@@ -1,3 +1,31 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.impact-tag {
+    @apply py-1 px-3 rounded-full font-bold text-xs text-white uppercase;
+}
+/* --- Add this to src/index.css --- */
+
+/* Make the border a little thicker to be more visible */
+.article-card {
+    border-width: 2px;
+}
+
+/* Add this to src/index.css */
+
+.impact-tag {
+    @apply py-1 px-3 rounded-full font-bold text-xs text-white uppercase;
+}
+
+.impact-tag.low {
+    @apply bg-green-500;
+}
+
+.impact-tag.medium {
+    @apply bg-yellow-500;
+}
+
+.impact-tag.high {
+    @apply bg-red-500;
+}

@@ -1,93 +1,79 @@
-# app.py - Your First Web Server
+# app.py - The Flask Web Server Definition
 
-from flask import Flask, jsonify
-import feedparser
-import requests
-from datetime import datetime, timedelta, timezone
-from newspaper import Article
+from flask import Flask, jsonify, request
+from flask_cors import CORS 
 from concurrent.futures import ProcessPoolExecutor
 
-# --- Step 1: Create the Flask App ---
+# Import all necessary logic from your track.py module
+from track import get_recent_articles, process_article, summarize_with_ollama, TARGET_URLS 
+
+# --- Flask App Initialization ---
 app = Flask(__name__)
+CORS(app) # Enable CORS for all routes
 
-# --- Step 2: Copy All Your Helper Functions ---
+# --- Helper to run the Ollama summary logic directly (for debugging/future use) ---
+def run_ollama_query(user_prompt):
+    """Runs a direct query to Ollama for a real-time user prompt."""
+    llm_prompt = f"Answer this competitive intelligence question clearly and concisely: {user_prompt}"
+    response = summarize_with_ollama(llm_prompt, model="gemma:2b")
+    if "Error connecting to Ollama" in response:
+        raise ConnectionError(response)
+    return response
 
-TARGET_URLS = [
-    "https://techcrunch.com/feed/",
-    "https://www.theverge.com/rss/index.xml",
-    "https://www.wired.com/feed/category/business/latest/rss",
-    "https://news.ycombinator.com/rss",
-    "https://a16z.com/feed/",
-]
 
-def get_recent_articles(urls):
-    recent_articles = []
-    time_threshold = datetime.now(timezone.utc) - timedelta(days=1)
-    for url in urls:
-        try:
-            feed = feedparser.parse(url)
-            if hasattr(feed.feed, 'title'):
-                source_name = feed.feed.title
-            else:
-                source_name = "Unknown Source"
-            for entry in feed.entries:
-                published_time = datetime(*entry.published_parsed[:6]).replace(tzinfo=timezone.utc)
-                if published_time > time_threshold:
-                    article = {'title': entry.title, 'link': entry.link, 'source': source_name}
-                    recent_articles.append(article)
-        except Exception as e:
-            print(f"Could not process feed {url}. Error: {e}")
-    return recent_articles
+# ----------------------------------------------------------------------
+# ENDPOINT: /api/digest/<num> (The dynamic endpoint for your Bolt Frontend)
+# ----------------------------------------------------------------------
 
-def summarize_with_ollama(text_to_summarize, model="gemma:2b"):
-    try:
-        url = "http://localhost:11434/api/generate"
-        payload = { "model": model, "prompt": f"You are a senior tech analyst. Summarize this article in a single, clean paragraph of no more than two sentences, focusing on the most critical information. Do not use conversational filler. Article: {text_to_summarize}", "stream": False }
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        summary = response.json().get('response', 'Could not generate a summary.')
-        return summary.strip()
-    except requests.exceptions.RequestException as e:
-        return f"Error connecting to Ollama: {e}"
-
-def process_article(article_data):
-    try:
-        article = Article(article_data['link'])
-        article.download()
-        article.parse()
-        text_for_summary = article.text[:2500]
-        summary = summarize_with_ollama(text_for_summary)
-        article_data['summary'] = summary
-        return article_data
-    except Exception as e:
-        print(f"--> Failed to process article: {article_data['link']}. Error: {e}")
-        return None
-
-# --- Step 3: Create Your API Endpoint ---
-
-@app.route("/api/digest")
-def get_digest():
-    """This function will run when someone visits the /api/digest URL."""
-    print("Request received for digest...")
+@app.route("/api/digest", methods=['GET'])
+@app.route("/api/digest/<int:num_to_process>", methods=['GET']) 
+def get_digest(num_to_process=5): # Default to 5
+    """
+    Fetches new articles, processes up to 'num_to_process' articles, 
+    and returns the structured data to the frontend.
+    """
+    print(f"Request received for digest (Processing {num_to_process} articles)...")
     
-    # Run the logic from your script
+    # 1. Fetch ALL recent articles
     new_articles = get_recent_articles(TARGET_URLS)
+    total_found = len(new_articles)
     
-    if not new_articles:
-        return jsonify({"message": "No new articles found.", "articles": []})
+    if total_found == 0:
+        return jsonify({"total_found": 0, "summarized": []})
 
-    # For speed, let's just process the first 5 articles for this API
-    articles_to_process = new_articles[:5]
+    # 2. Select articles to process (based on user input or default)
+    articles_to_process = new_articles[:num_to_process]
     
+    # 3. Process articles in parallel
     with ProcessPoolExecutor(max_workers=4) as executor:
         results = list(executor.map(process_article, articles_to_process))
     
-    # Filter out any failed articles
     successful_results = [res for res in results if res is not None]
     
-    print("Request complete. Sending data.")
-    return jsonify(successful_results)
+    print("Digest request complete. Sending data.")
+    
+    # 4. Return structured JSON data
+    return jsonify({
+        "total_found": total_found,
+        "summarized_count": len(successful_results),
+        "summarized_articles": successful_results,
+        # The full article list is useful for the frontend to show the max number
+        "full_article_list": new_articles 
+    })
 
-# This part is needed to make the script runnable with `python app.py`
+
+# ----------------------------------------------------------------------
+# ENDPOINT: /api/query (For future direct LLM Q&A, not used for the digest feature)
+# ----------------------------------------------------------------------
+
+@app.route("/api/query", methods=['POST'])
+def handle_user_query():
+    # ... (Keep the /api/query logic from the previous step here if you want it)
+    pass
+
+
+# ----------------------------------------------------------------------
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    # RUN THIS AFTER SAVING THE FILE
+    app.run(debug=True, port=5000)
