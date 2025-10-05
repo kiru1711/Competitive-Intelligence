@@ -1,135 +1,98 @@
-import { useState, useEffect } from 'react';
-import { Plus, X } from 'lucide-react';
-import { supabase, Keyword } from '../lib/supabase';
+// src/pages/KeywordsPage.tsx
 
-export default function KeywordsPage() {
+import React, { useState, useEffect } from 'react';
+
+// A blueprint for our keyword data from the API
+interface Keyword {
+  id: number;
+  url: string;
+  created_at: string;
+}
+
+const KeywordsPage = () => {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
-  const [isAdding, setIsAdding] = useState(false);
-  const [newKeyword, setNewKeyword] = useState('');
+  const [newKeywordUrl, setNewKeywordUrl] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
+  // 1. Fetch all keywords from our Flask API when the page loads
   useEffect(() => {
-    fetchKeywords();
+    fetch('http://127.0.0.1:5000/api/keywords')
+      .then(res => res.json())
+      .then(data => {
+        setKeywords(data);
+        setIsLoading(false);
+      })
+      .catch(error => console.error("Error fetching keywords:", error));
   }, []);
 
-  const fetchKeywords = async () => {
-    const { data, error } = await supabase
-      .from('keywords')
-      .select('*')
-      .order('created_at', { ascending: false });
+  // 2. Handle adding a new keyword by calling our Flask API
+  const handleAddKeyword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newKeywordUrl.trim()) return;
 
-    if (error) {
-      console.error('Error fetching keywords:', error);
-    } else if (data) {
-      setKeywords(data);
-    }
+    fetch('http://127.0.0.1:5000/api/keywords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: newKeywordUrl }),
+    })
+      .then(res => res.json())
+      .then(newKeyword => {
+        setKeywords([newKeyword, ...keywords]); // Add new keyword to the top of the list
+        setNewKeywordUrl(''); // Clear the input field
+      });
   };
 
-  const addKeyword = async () => {
-    if (!newKeyword.trim()) return;
-
-    const { error } = await supabase
-      .from('keywords')
-      .insert([{ keyword: newKeyword.trim() }]);
-
-    if (error) {
-      console.error('Error adding keyword:', error);
-    } else {
-      setNewKeyword('');
-      setIsAdding(false);
-      fetchKeywords();
-    }
+  // 3. Handle deleting a keyword by calling our Flask API
+  const handleDeleteKeyword = (id: number) => {
+    fetch(`http://127.0.0.1:5000/api/keywords/${id}`, {
+      method: 'DELETE',
+    })
+    .then(res => {
+      if(res.ok) {
+        // Filter out the deleted keyword from the local state to update the UI
+        setKeywords(keywords.filter(kw => kw.id !== id));
+      }
+    });
   };
 
-  const deleteKeyword = async (id: string) => {
-    const { error } = await supabase.from('keywords').delete().eq('id', id);
-
-    if (error) {
-      console.error('Error deleting keyword:', error);
-    } else {
-      fetchKeywords();
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  };
+  if (isLoading) {
+    return <div className="p-8 text-white">Loading keywords...</div>;
+  }
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="text-3xl font-bold text-white">Keywords & Competitors</h1>
-        <button
-          onClick={() => setIsAdding(true)}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-        >
-          <Plus size={20} />
-          <span>Add Keyword</span>
+    <div className="p-8 text-white">
+      <h1 className="text-3xl font-bold mb-8">Manage Keywords</h1>
+      
+      <form onSubmit={handleAddKeyword} className="flex items-center gap-4 mb-8">
+        <input
+          type="url"
+          value={newKeywordUrl}
+          onChange={(e) => setNewKeywordUrl(e.target.value)}
+          placeholder="https://example.com/feed"
+          className="bg-gray-700 border border-gray-600 rounded-md p-2 w-full text-white flex-grow"
+          required
+        />
+        <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-md">
+          Add
         </button>
-      </div>
+      </form>
 
-      {isAdding && (
-        <div className="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-6">
-          <h3 className="text-white font-medium mb-4">Add New Keyword</h3>
-          <div className="flex gap-3">
-            <input
-              type="text"
-              value={newKeyword}
-              onChange={(e) => setNewKeyword(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addKeyword()}
-              placeholder="Enter keyword or competitor name..."
-              className="flex-1 bg-gray-900 text-white px-4 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-              autoFocus
-            />
+      <div className="space-y-4">
+        <h2 className="text-xl font-semibold text-gray-300 border-b border-gray-700 pb-2">Tracked Feeds</h2>
+        {keywords.map(keyword => (
+          <div key={keyword.id} className="bg-gray-800 p-4 rounded-lg flex justify-between items-center border border-gray-700">
+            <span className="text-gray-300 break-all">{keyword.url}</span>
             <button
-              onClick={addKeyword}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded transition-colors"
+              onClick={() => handleDeleteKeyword(keyword.id)}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-md text-sm ml-4"
             >
-              Add
+              Delete
             </button>
-            <button
-              onClick={() => {
-                setIsAdding(false);
-                setNewKeyword('');
-              }}
-              className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {keywords.map((keyword) => (
-          <div
-            key={keyword.id}
-            className="bg-gray-800 rounded-lg p-6 border border-gray-700 hover:border-gray-600 transition-colors relative group"
-          >
-            <button
-              onClick={() => deleteKeyword(keyword.id)}
-              className="absolute top-3 right-3 bg-gray-700 hover:bg-red-600 text-gray-400 hover:text-white p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
-            >
-              <X size={16} />
-            </button>
-
-            <h3 className="text-lg font-bold text-white mb-2">{keyword.keyword}</h3>
-            <p className="text-gray-400 text-sm">Added {formatDate(keyword.created_at)}</p>
           </div>
         ))}
       </div>
-
-      {keywords.length === 0 && (
-        <div className="bg-gray-800 rounded-lg p-12 border border-gray-700 text-center">
-          <p className="text-gray-400 mb-4">No keywords added yet</p>
-          <button
-            onClick={() => setIsAdding(true)}
-            className="text-blue-500 hover:text-blue-400"
-          >
-            Add your first keyword
-          </button>
-        </div>
-      )}
     </div>
   );
-}
+};
+
+export default KeywordsPage;

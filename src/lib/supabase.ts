@@ -28,7 +28,7 @@ export interface Article {
 
 export interface Keyword {
     id: string;
-    keyword: string;
+    url: string;
     created_at: string;
 }
 
